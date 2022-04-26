@@ -9,6 +9,22 @@ use rustyline::validate::{ValidationContext, ValidationResult};
 use rustyline::{CompletionType, Config, Context, EditMode};
 use rustyline_derive::{Completer, Helper};
 
+use crate::meta_command::MetaCommand;
+use crate::sql::SQLCommand;
+
+#[derive(Debug, PartialEq)]
+pub enum CommandType {
+    MetaCommand(MetaCommand),
+    SQLCommand(SQLCommand),
+}
+
+pub fn get_command_type(command: &String) -> CommandType {
+    match command.starts_with(".") {
+        true => CommandType::MetaCommand(MetaCommand::new(command.to_owned())),
+        false => CommandType::SQLCommand(SQLCommand::new(command.to_owned())),
+    }
+}
+
 #[derive(Helper, Completer)]
 pub struct REPLHelper {
     pub validator: MatchingBracketValidator,
@@ -40,10 +56,7 @@ impl Validator for REPLHelper {
     fn validate(&self, ctx: &mut ValidationContext) -> Result<ValidationResult, ReadlineError> {
         use ValidationResult::{Incomplete, /*Invalid,*/ Valid};
         let input = ctx.input();
-        // let result = if !input.starts_with("SELECT") {
-        //     Invalid(Some(" --< Expect: SELECT stmt".to_owned()))
-        // } else
-        let result = if input.eq(".exit") {
+        let result = if input.starts_with(".") {
             Valid(None)
         } else if !input.ends_with(';') {
             Incomplete

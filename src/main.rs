@@ -1,8 +1,13 @@
 extern crate clap;
+mod error;
+mod meta_command;
 mod repl;
+mod sql;
 
-use clap::{crate_version, Command};
-use repl::{get_config, REPLHelper};
+use clap::{crate_authors, crate_description, crate_version, Command};
+use meta_command::handle_meta_command;
+use repl::{get_command_type, get_config, CommandType, REPLHelper};
+use sql::process_command;
 
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -11,9 +16,9 @@ fn main() -> rustyline::Result<()> {
     env_logger::init();
 
     let _matches = Command::new("Rust-SQLite3")
-        .version("0.0.1")
-        .author("Reza Alizadeh Majd <r.a.majd@gmail.com>")
-        .about("SQLite3 DB engine - re-implemented by Rust")
+        .version(crate_version!())
+        .author(crate_authors!())
+        .about(crate_description!())
         .get_matches();
 
     let config = get_config();
@@ -26,19 +31,8 @@ fn main() -> rustyline::Result<()> {
         println!("No previous history.");
     }
 
-    let mut count = 1;
     loop {
-        if count == 1 {
-            // TODO: Get info about the application name and version dynamically
-            println!(
-                "{}{}{}{}",
-                format!("Rust-SQLite3 - {}\n", crate_version!()),
-                "Enter .exit to quit.\n",
-                "Enter .help for usage hints.\n",
-                "Connected to a transient in-memory database."
-            );
-        }
-        let p = format!("rust-sqlite3 | {}> ", count);
+        let p = format!("rust-sql> ");
         repl.helper_mut() // our helper
             .expect("No helper found")
             .colored_prompt = format!("\x1b[1;32m{}\x1b[0m", p);
@@ -47,14 +41,20 @@ fn main() -> rustyline::Result<()> {
         match readline {
             Ok(command) => {
                 repl.add_history_entry(command.as_str());
-                // println!("Line: {}", command);
-                if command.eq(".exit") {
-                    break;
-                } else {
-                    println!(
-                        "Error: unknown command or invalid arguments: '{}'. Enter '.help'",
-                        &command
-                    );
+
+                match get_command_type(&command.trim().to_owned()) {
+                    CommandType::SQLCommand(_cmd) => {
+                        let _ = match process_command(&command) {
+                            Ok(response) => println!("{}", response),
+                            Err(err) => println!("An error occurred: {}", err),
+                        };
+                    }
+                    CommandType::MetaCommand(cmd) => {
+                        let _ = match handle_meta_command(cmd) {
+                            Ok(response) => println!("{}", response),
+                            Err(err) => println!("An error occurred: {}", err),
+                        };
+                    }
                 }
             }
             Err(ReadlineError::Interrupted) => {
@@ -68,7 +68,6 @@ fn main() -> rustyline::Result<()> {
                 break;
             }
         }
-        count += 1;
     }
     repl.append_history(".history.tmp").unwrap();
     Ok(())
